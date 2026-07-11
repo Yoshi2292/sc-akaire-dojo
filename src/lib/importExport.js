@@ -17,6 +17,9 @@ export function validateQuestions(input) {
   const errors = [];
   const items = arr.map((raw, i) => {
     const n = i + 1;
+    const limits = Array.isArray(raw.charLimits)
+      ? raw.charLimits.map(Number).filter((v) => Number.isFinite(v) && v > 0)
+      : [];
     if (!VALID_TYPES.includes(raw.type)) errors.push(`${n}件目: type は "kijutsu" か "recall" である必要があります`);
     if (!VALID_FIELDS.includes(raw.field)) errors.push(`${n}件目: field が不正です（${VALID_FIELDS.join("/")}）`);
     if (!raw.question || !String(raw.question).trim()) errors.push(`${n}件目: question は必須です`);
@@ -29,6 +32,11 @@ export function validateQuestions(input) {
       exhibit: typeof raw.exhibit === "string" ? raw.exhibit : undefined,
       question: raw.question,
       charLimit: raw.charLimit ? Number(raw.charLimit) : undefined,
+      // 複数解答欄（「それぞれXX字以内」など）: 各解答欄の字数制限と任意ラベル
+      charLimits: limits.length >= 2 ? limits : undefined,
+      answerLabels: limits.length >= 2 && Array.isArray(raw.answerLabels)
+        ? raw.answerLabels.map(String)
+        : undefined,
       modelAnswer: raw.modelAnswer,
       keywords: Array.isArray(raw.keywords) ? raw.keywords : [],
       source: raw.source || "json",

@@ -7,6 +7,18 @@ import { validateQuestions, exportAllData, parseFullDataImport } from "./lib/imp
 import { Btn, Tag, Card, CharGauge, btnBase } from "./components/ui";
 import { ShuResult } from "./components/ShuResult";
 
+/* ---- 複数解答欄（設問内に「それぞれXX字以内」など複数の記述を求める場合）---- */
+const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
+const partLabel = (q, i) => (q.answerLabels && q.answerLabels[i]) || CIRCLED[i] || `(${i + 1})`;
+// charLimits に2つ以上あれば複数解答モード。1つ/未設定は従来どおり単一欄。
+const answerParts = (q) => (Array.isArray(q?.charLimits) && q.charLimits.length >= 2 ? q.charLimits : null);
+// 複数解答を採点用の1つの文字列に結合（gradePromptの文言は不変のまま）
+const composeAnswer = (q, answer, answers) => {
+  const parts = answerParts(q);
+  if (!parts) return answer;
+  return parts.map((_lim, i) => `${partLabel(q, i)} ${(answers[i] || "").trim()}`).join("\n");
+};
+
 /* ---------------- メイン ---------------- */
 export default function App() {
   const needsToken = !isMockMode && !getAppToken();
@@ -20,6 +32,7 @@ export default function App() {
   const [reviewMode, setReviewMode] = useState(false);
   const [q, setQ] = useState(null);
   const [answer, setAnswer] = useState("");
+  const [answers, setAnswers] = useState([]); // 複数解答欄用
   const [result, setResult] = useState(null);
   const [grading, setGrading] = useState(false);
   const [error, setError] = useState("");
@@ -34,7 +47,7 @@ export default function App() {
   const [genLoading, setGenLoading] = useState(false);
 
   // 追加フォーム
-  const [form, setForm] = useState({ type: "kijutsu", field: "server", scenario: "", question: "", charLimit: "", modelAnswer: "", keywords: "" });
+  const [form, setForm] = useState({ type: "kijutsu", field: "server", scenario: "", question: "", charLimit: "", charLimits: "", answerLabels: "", modelAnswer: "", keywords: "" });
 
   // JSONインポート（過去問）
   const [jsonImportText, setJsonImportText] = useState("");
@@ -74,7 +87,7 @@ export default function App() {
     let cand = p.filter((x) => x.id !== currentId);
     if (cand.length === 0) cand = p;
     const nq = cand[Math.floor(Math.random() * cand.length)];
-    setQ(nq); setAnswer(""); setResult(null); setError("");
+    setQ(nq); setAnswer(""); setAnswers([]); setResult(null); setError("");
     setElapsed(0);
     startRef.current = Date.now();
     if (timerRef.current) clearInterval(timerRef.current);
@@ -84,12 +97,14 @@ export default function App() {
   };
 
   const grade = async () => {
-    if (!answer.trim()) return;
+    const parts = answerParts(q);
+    if (parts ? parts.some((_l, i) => !(answers[i] || "").trim()) : !answer.trim()) return;
+    const combined = composeAnswer(q, answer, answers);
     setGrading(true); setError("");
     if (timerRef.current) clearInterval(timerRef.current);
     const timeSec = Math.floor((Date.now() - startRef.current) / 1000);
     try {
-      const r = await gradeAnswer(q, answer);
+      const r = await gradeAnswer(q, combined);
       setResult(r);
       const entry = { qid: q.id, date: new Date().toISOString(), score: r.score, timeSec, type: q.type, field: q.field };
       const next = { ...data, history: [...data.history, entry].slice(-200) };
@@ -129,7 +144,7 @@ export default function App() {
     persist(next);
     if (solve) {
       setDrillType(genQ.type); setReviewMode(false);
-      setQ(genQ); setAnswer(""); setResult(null); setError(""); setElapsed(0);
+      setQ(genQ); setAnswer(""); setAnswers([]); setResult(null); setError(""); setElapsed(0);
       startRef.current = Date.now();
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
@@ -140,19 +155,24 @@ export default function App() {
 
   const addCustom = () => {
     if (!form.question.trim() || !form.modelAnswer.trim()) return;
+    const limits = form.charLimits.split(/[、,]/).map((s) => parseInt(s.trim(), 10)).filter((v) => Number.isFinite(v) && v > 0);
+    const labels = form.answerLabels.split(/[、,]/).map((s) => s.trim()).filter(Boolean);
+    const multi = limits.length >= 2;
     const nq = {
       id: "c-" + Date.now(),
       type: form.type,
       field: form.field,
       scenario: form.scenario.trim() || undefined,
       question: form.question.trim(),
-      charLimit: form.charLimit ? parseInt(form.charLimit, 10) : undefined,
+      charLimit: !multi && form.charLimit ? parseInt(form.charLimit, 10) : undefined,
+      charLimits: multi ? limits : undefined,
+      answerLabels: multi && labels.length > 0 ? labels : undefined,
       modelAnswer: form.modelAnswer.trim(),
       keywords: form.keywords.split(/[、,]/).map((s) => s.trim()).filter(Boolean),
       source: "custom",
     };
     persist({ ...data, custom: [...data.custom, nq] });
-    setForm({ type: "kijutsu", field: "server", scenario: "", question: "", charLimit: "", modelAnswer: "", keywords: "" });
+    setForm({ type: "kijutsu", field: "server", scenario: "", question: "", charLimit: "", charLimits: "", answerLabels: "", modelAnswer: "", keywords: "" });
     setScreen("home");
   };
 
@@ -412,29 +432,63 @@ export default function App() {
             </p>
           </Card>
 
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            disabled={grading || !!result}
-            placeholder="ここに答案を書く（自分の言葉で、白紙から）"
-            rows={isKijutsu ? 3 : 6}
-            style={{
+          {(() => {
+            const textareaStyle = {
               width: "100%", boxSizing: "border-box", padding: 14,
               fontSize: 16, lineHeight: 1.8, fontFamily: "inherit",
               border: `1.5px solid ${C.line}`, borderRadius: 10,
               background: "#FFFDF8", color: C.ink, resize: "vertical",
               outline: "none",
-            }}
-          />
-          <div style={{ margin: "8px 2px 16px" }}>
-            <CharGauge len={answer.length} limit={q.charLimit} />
-          </div>
+            };
+            const parts = answerParts(q);
+            if (parts) {
+              return (
+                <div style={{ display: "grid", gap: 16, marginBottom: 16 }}>
+                  {parts.map((lim, i) => (
+                    <div key={i}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.shu, marginBottom: 6 }}>
+                        解答 {partLabel(q, i)}
+                      </div>
+                      <textarea
+                        value={answers[i] || ""}
+                        onChange={(e) => {
+                          const na = [...answers]; na[i] = e.target.value; setAnswers(na);
+                        }}
+                        disabled={grading || !!result}
+                        placeholder="ここに答案を書く（自分の言葉で、白紙から）"
+                        rows={2}
+                        style={textareaStyle}
+                      />
+                      <div style={{ margin: "6px 2px 0" }}>
+                        <CharGauge len={(answers[i] || "").length} limit={lim} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+            return (
+              <>
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  disabled={grading || !!result}
+                  placeholder="ここに答案を書く（自分の言葉で、白紙から）"
+                  rows={isKijutsu ? 3 : 6}
+                  style={textareaStyle}
+                />
+                <div style={{ margin: "8px 2px 16px" }}>
+                  <CharGauge len={answer.length} limit={q.charLimit} />
+                </div>
+              </>
+            );
+          })()}
 
           {error && <p style={{ color: C.shu, fontSize: 14, margin: "0 0 12px" }}>{error}</p>}
 
           {!result ? (
             <div style={{ display: "flex", gap: 10 }}>
-              <Btn kind="shu" onClick={grade} disabled={grading || !answer.trim()} style={{ flex: 1 }}>
+              <Btn kind="shu" onClick={grade} disabled={grading || (answerParts(q) ? answerParts(q).some((_l, i) => !(answers[i] || "").trim()) : !answer.trim())} style={{ flex: 1 }}>
                 {grading ? "朱入れ中…" : "採点する"}
               </Btn>
               <Btn kind="ghost" onClick={() => {
@@ -559,6 +613,12 @@ export default function App() {
             {form.type === "kijutsu" && (<>
               {label("字数制限（数値・任意）")}
               <input type="number" value={form.charLimit} onChange={(e) => setForm({ ...form, charLimit: e.target.value })} style={inputStyle} placeholder="40" />
+              {label("複数解答の字数制限（カンマ区切り・任意）")}
+              <input value={form.charLimits} onChange={(e) => setForm({ ...form, charLimits: e.target.value })} style={inputStyle} placeholder="例: 25, 25（「それぞれXX字以内」用。2つ以上でこちらが優先）" />
+              {form.charLimits.split(/[、,]/).filter((s) => s.trim()).length >= 2 && (<>
+                {label("解答ラベル（カンマ区切り・任意）")}
+                <input value={form.answerLabels} onChange={(e) => setForm({ ...form, answerLabels: e.target.value })} style={inputStyle} placeholder="例: 利点, 実施内容（省略時は①②③）" />
+              </>)}
             </>)}
             {label("模範解答 *")}
             <textarea rows={3} value={form.modelAnswer} onChange={(e) => setForm({ ...form, modelAnswer: e.target.value })} style={inputStyle} />
@@ -666,6 +726,7 @@ export default function App() {
                     <div style={{ display: "flex", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
                       <Tag>{fieldLabel(x.field)}</Tag>
                       {x.charLimit && <Tag tone="shu">{x.charLimit}字</Tag>}
+                      {Array.isArray(x.charLimits) && x.charLimits.length >= 2 && <Tag tone="shu">{x.charLimits.join("/")}字（複数解答）</Tag>}
                       {x.exhibit && <Tag tone="pass">図表あり</Tag>}
                       {x.ref && <Tag>{x.ref}</Tag>}
                     </div>
