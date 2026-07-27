@@ -19,6 +19,7 @@ export const FIELDS = [
   { id: "mail", label: "メールセキュリティ" },
   { id: "web", label: "Web・セキュアプログラミング" },
   { id: "incident", label: "インシデント対応" },
+  { id: "iot", label: "IoT/組込み" },
   { id: "law", label: "法制度・規格" },
 ];
 

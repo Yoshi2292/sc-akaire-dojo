@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C, FIELDS, fieldLabel } from "./theme";
 import { SEED } from "./data/seed";
+import MURAYAMA_RAW from "./data/murayama_kouiu_recall.json";
 import { loadData, saveData, emptyData } from "./lib/storage";
 import { gradeAnswer, generateQuestion, getAppToken, setAppToken, isMockMode } from "./lib/api";
 import { validateQuestions, exportAllData, parseFullDataImport } from "./lib/importExport";
@@ -12,6 +13,7 @@ const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 const partLabel = (q, i) => (q.answerLabels && q.answerLabels[i]) || CIRCLED[i] || `(${i + 1})`;
 // charLimits に2つ以上あれば複数解答モード。1つ/未設定は従来どおり単一欄。
 const answerParts = (q) => (Array.isArray(q?.charLimits) && q.charLimits.length >= 2 ? q.charLimits : null);
+const MURAYAMA = MURAYAMA_RAW.map((q, idx) => ({ id: `murayama-${idx + 1}`, ...q }));
 // 複数解答を採点用の1つの文字列に結合（gradePromptの文言は不変のまま）
 const composeAnswer = (q, answer, answers) => {
   const parts = answerParts(q);
@@ -69,7 +71,7 @@ export default function App() {
     if (review) {
       return data.review.filter((x) => (type ? x.type === type : true));
     }
-    let p = [...SEED, ...data.custom].filter((x) => x.type === type);
+    let p = [...SEED, ...MURAYAMA, ...data.custom].filter((x) => x.type === type);
     if (field !== "all") p = p.filter((x) => x.field === field);
     return p;
   };
