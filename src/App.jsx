@@ -38,9 +38,13 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [grading, setGrading] = useState(false);
   const [error, setError] = useState("");
+  const [speechError, setSpeechError] = useState("");
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [recognizing, setRecognizing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const timerRef = useRef(null);
   const startRef = useRef(0);
+  const recognitionRef = useRef(null);
 
   // 生成状態
   const [genField, setGenField] = useState("server");
@@ -63,6 +67,47 @@ export default function App() {
   useEffect(() => {
     setData(loadData());
   }, []);
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.lang = "ja-JP";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      if (!transcript) return;
+      if (answerParts(q)) {
+        setAnswers((prev) => {
+          const next = [...prev];
+          next[0] = `${(next[0] || "").trim()} ${transcript}`.trim();
+          return next;
+        });
+      } else {
+        setAnswer((prev) => `${prev.trim()} ${transcript}`.trim());
+      }
+    };
+
+    recognition.onend = () => {
+      setRecognizing(false);
+    };
+
+    recognition.onerror = (event) => {
+      setSpeechError(event.error ? `音声入力エラー: ${event.error}` : "音声入力中にエラーが発生しました。");
+      setRecognizing(false);
+    };
+
+    recognitionRef.current = recognition;
+    setSpeechSupported(true);
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort();
+      }
+    };
+  }, [q]);
 
   const persist = (next) => { setData(next); saveData(next); };
 
@@ -494,21 +539,79 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {speechSupported ? (
+                      <Btn
+                        kind={recognizing ? "shu" : "ghost"}
+                        onClick={() => {
+                          if (!recognitionRef.current) return;
+                          setSpeechError("");
+                          if (recognizing) {
+                            recognitionRef.current.stop();
+                          } else {
+                            try {
+                              recognitionRef.current.start();
+                              setRecognizing(true);
+                            } catch (err) {
+                              setSpeechError("音声入力を開始できませんでした。");
+                            }
+                          }
+                        }}
+                        disabled={grading || !!result}
+                        style={{ padding: "9px 14px", fontSize: 13 }}
+                      >
+                        {recognizing ? "音声入力停止" : "音声入力開始"}
+                      </Btn>
+                    ) : (
+                      <span style={{ fontSize: 13, color: C.inkSoft }}>音声入力非対応のブラウザです。</span>
+                    )}
+                    {speechError && <span style={{ fontSize: 13, color: C.shu }}>{speechError}</span>}
+                  </div>
                 </div>
               );
             }
             return (
               <>
-                <textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  disabled={grading || !!result}
-                  placeholder="ここに答案を書く（自分の言葉で、白紙から）"
-                  rows={isKijutsu ? 3 : 6}
-                  style={textareaStyle}
-                />
-                <div style={{ margin: "8px 2px 16px" }}>
-                  <CharGauge len={answer.length} limit={q.charLimit} />
+                <div style={{ display: "grid", gap: 10 }}>
+                  <textarea
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                disabled={grading || !!result}
+                placeholder="ここに答案を書く（自分の言葉で、白紙から）"
+                rows={isKijutsu ? 3 : 6}
+                style={textareaStyle}
+                  />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                {speechSupported ? (
+                  <Btn
+                    kind={recognizing ? "shu" : "ghost"}
+                    onClick={() => {
+                      if (!recognitionRef.current) return;
+                      setSpeechError("");
+                      if (recognizing) {
+                        recognitionRef.current.stop();
+                      } else {
+                        try {
+                          recognitionRef.current.start();
+                          setRecognizing(true);
+                        } catch (err) {
+                          setSpeechError("音声入力を開始できませんでした。");
+                        }
+                      }
+                    }}
+                    disabled={grading || !!result}
+                    style={{ padding: "9px 14px", fontSize: 13 }}
+                  >
+                    {recognizing ? "音声入力停止" : "音声入力開始"}
+                  </Btn>
+                ) : (
+                  <span style={{ fontSize: 13, color: C.inkSoft }}>音声入力非対応のブラウザです。</span>
+                )}
+                {speechError && <span style={{ fontSize: 13, color: C.shu }}>{speechError}</span>}
+                  </div>
+                  <div style={{ margin: "8px 2px 16px" }}>
+                <CharGauge len={answer.length} limit={q.charLimit} />
+                  </div>
                 </div>
               </>
             );
