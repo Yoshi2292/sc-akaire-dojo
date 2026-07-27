@@ -66,6 +66,11 @@ export default function App() {
 
   const persist = (next) => { setData(next); saveData(next); };
 
+  const persistStats = (nextStats) => {
+    const next = { ...data, stats: nextStats };
+    persist(next);
+  };
+
   /* --- 問題プール --- */
   const pool = (type, field, review) => {
     if (review) {
@@ -86,6 +91,8 @@ export default function App() {
   };
 
   const nextQuestion = (p, currentId) => {
+    const nextStats = { ...data.stats, attempted: (data.stats?.attempted || 0) + 1 };
+    persistStats(nextStats);
     let cand = p.filter((x) => x.id !== currentId);
     if (cand.length === 0) cand = p;
     const nq = cand[Math.floor(Math.random() * cand.length)];
@@ -110,11 +117,12 @@ export default function App() {
       setResult(r);
       const entry = { qid: q.id, date: new Date().toISOString(), score: r.score, timeSec, type: q.type, field: q.field };
       const next = { ...data, history: [...data.history, entry].slice(-200) };
+      const nextStats = { ...data.stats, answered: (data.stats?.answered || 0) + 1 };
       // 復習リスト管理
       const inReview = next.review.some((x) => x.id === q.id);
       if (r.score < 7 && !inReview) next.review = [...next.review, q];
       if (r.score >= 8 && inReview && reviewMode) next.review = next.review.filter((x) => x.id !== q.id);
-      persist(next);
+      persist({ ...next, stats: nextStats });
     } catch (e) {
       console.error(e);
       setError("採点に失敗しました。通信状態を確認して、もう一度お試しください。");
@@ -145,6 +153,8 @@ export default function App() {
     const next = { ...data, custom: [...data.custom, genQ] };
     persist(next);
     if (solve) {
+      const nextStats = { ...data.stats, attempted: (data.stats?.attempted || 0) + 1 };
+      persistStats(nextStats);
       setDrillType(genQ.type); setReviewMode(false);
       setQ(genQ); setAnswer(""); setAnswers([]); setResult(null); setError(""); setElapsed(0);
       startRef.current = Date.now();
@@ -215,13 +225,21 @@ export default function App() {
   /* --- 統計 --- */
   const stats = (() => {
     const h = data.history;
-    if (h.length === 0) return null;
+    const attempted = data.stats?.attempted || 0;
+    if (h.length === 0 && attempted === 0) return null;
     const avg = (arr) => arr.reduce((a, b) => a + b.score, 0) / arr.length;
     const byField = {};
     h.forEach((e) => { (byField[e.field] = byField[e.field] || []).push(e); });
     const today = new Date().toDateString();
     const todayCount = h.filter((e) => new Date(e.date).toDateString() === today).length;
-    return { total: h.length, avg: avg(h), byField, todayCount };
+    return {
+      total: h.length,
+      avg: h.length > 0 ? avg(h) : 0,
+      byField,
+      todayCount,
+      attempted,
+      answerRate: attempted > 0 ? h.length / attempted : null,
+    };
   })();
 
   const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -251,7 +269,12 @@ export default function App() {
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           {stats && screen === "home" && (
-            <span style={{ fontSize: 12.5, opacity: 0.75 }}>本日 {stats.todayCount}問</span>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <span style={{ fontSize: 12.5, opacity: 0.75 }}>本日 {stats.todayCount}問</span>
+              <span style={{ fontSize: 12.5, opacity: 0.75 }}>
+                回答率 {stats.attempted > 0 ? `${Math.round((stats.total / stats.attempted) * 100)}%` : "-"}
+              </span>
+            </div>
           )}
           <button
             onClick={() => { if (timerRef.current) clearInterval(timerRef.current); setTokenInput(getAppToken()); setScreen("settings"); }}
@@ -366,6 +389,11 @@ export default function App() {
                       {stats.avg.toFixed(1)}
                     </div>
                     <div style={{ fontSize: 12, color: C.inkSoft }}>平均点 /10</div>
+                    {stats.answerRate !== null && (
+                      <div style={{ fontSize: 12, color: C.inkSoft, marginTop: 4 }}>
+                        回答率 {Math.round(stats.answerRate * 100)}% ({stats.total}/{stats.attempted})
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div style={{ display: "grid", gap: 8 }}>
@@ -489,7 +517,7 @@ export default function App() {
           {error && <p style={{ color: C.shu, fontSize: 14, margin: "0 0 12px" }}>{error}</p>}
 
           {!result ? (
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <Btn kind="shu" onClick={grade} disabled={grading || (answerParts(q) ? answerParts(q).some((_l, i) => !(answers[i] || "").trim()) : !answer.trim())} style={{ flex: 1 }}>
                 {grading ? "朱入れ中…" : "採点する"}
               </Btn>
@@ -497,6 +525,9 @@ export default function App() {
                 const p = reviewMode ? data.review : pool(drillType, fieldFilter, false);
                 nextQuestion(p, q.id);
               }}>スキップ</Btn>
+              <Btn kind="ghost" onClick={() => { if (timerRef.current) clearInterval(timerRef.current); setScreen("home"); }}>
+                終了
+              </Btn>
             </div>
           ) : (
             <>

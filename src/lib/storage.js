@@ -1,6 +1,6 @@
 /* ---------------- ストレージ ---------------- */
 export const STORE_KEY = "akaire-data-v1";
-export const emptyData = { history: [], custom: [], review: [] };
+export const emptyData = { history: [], custom: [], review: [], stats: { attempted: 0, answered: 0 } };
 
 export function loadData() {
   try {

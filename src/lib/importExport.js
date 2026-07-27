@@ -73,5 +73,11 @@ export function parseFullDataImport(text) {
     history: Array.isArray(parsed.history) ? parsed.history : [],
     custom: Array.isArray(parsed.custom) ? parsed.custom : [],
     review: Array.isArray(parsed.review) ? parsed.review : [],
+    stats: parsed.stats && typeof parsed.stats === "object" && !Array.isArray(parsed.stats)
+      ? {
+          attempted: Number.isFinite(Number(parsed.stats.attempted)) ? Number(parsed.stats.attempted) : 0,
+          answered: Number.isFinite(Number(parsed.stats.answered)) ? Number(parsed.stats.answered) : 0,
+        }
+      : { attempted: 0, answered: 0 },
   };
 }
