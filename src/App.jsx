@@ -170,7 +170,9 @@ export default function App() {
       persist({ ...next, stats: nextStats });
     } catch (e) {
       console.error(e);
-      setError("採点に失敗しました。通信状態を確認して、もう一度お試しください。");
+      setError(e.message === "APP_TOKEN_INVALID"
+        ? "アクセストークンがWorkerのAPP_TOKENと一致しません。設定から正しいトークンを保存してください。"
+        : "採点に失敗しました。通信状態を確認して、もう一度お試しください。");
       // タイマー再開
       startRef.current = Date.now() - elapsed * 1000;
       timerRef.current = setInterval(() => {
@@ -786,7 +788,7 @@ export default function App() {
         <div style={inner}>
           <h2 style={{ fontFamily: "'Hiragino Mincho ProN', serif", fontSize: 20, margin: "0 0 4px" }}>設定</h2>
           <p style={{ fontSize: 13, color: C.inkSoft, margin: "0 0 12px", lineHeight: 1.7 }}>
-            AI採点・生成にはアクセストークンが必要です。Cloudflare Workerに設定した APP_TOKEN と同じ値を入力してください。
+            AI採点・生成にはアクセストークンが必要です。Cloudflare Workerに設定した APP_TOKEN と同じ値を入力してください。トークンは端末・ブラウザごとに保存されます。
           </p>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 700, color: C.inkSoft, marginBottom: 6 }}>アクセストークン</div>

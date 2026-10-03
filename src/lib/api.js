@@ -24,7 +24,19 @@ async function callMessages(prompt) {
       messages: [{ role: "user", content: prompt }],
     }),
   });
-  const data = await res.json();
+  const responseText = await res.text();
+  let data = {};
+  try {
+    data = JSON.parse(responseText);
+  } catch {
+    data.message = responseText;
+  }
+  if (res.status === 401 && !data.error) {
+    throw new Error("APP_TOKEN_INVALID");
+  }
+  if (!res.ok && !data.error) {
+    throw new Error(`HTTP_${res.status}`);
+  }
   if (data.error) throw new Error("API: " + (data.error.message || JSON.stringify(data.error)));
   const text = (data.content || [])
     .filter((b) => b.type === "text")
