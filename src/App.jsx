@@ -161,7 +161,7 @@ export default function App() {
       const r = await gradeAnswer(q, combined);
       setResult(r);
       const entry = { qid: q.id, date: new Date().toISOString(), score: r.score, timeSec, type: q.type, field: q.field };
-      const next = { ...data, history: [...data.history, entry].slice(-200) };
+      const next = { ...data, history: [...data.history, entry].slice(-5000) };
       const nextStats = { ...data.stats, answered: (data.stats?.answered || 0) + 1 };
       // 復習リスト管理
       const inReview = next.review.some((x) => x.id === q.id);
