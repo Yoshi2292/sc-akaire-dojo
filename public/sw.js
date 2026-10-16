@@ -1,6 +1,6 @@
 // 静的アセットのキャッシュのみを行うService Worker。
 // AI呼び出しはCloudflare Worker(別オリジン)へのfetchのため、ここでは触れない(オンライン前提)。
-const CACHE_NAME = "akaire-dojo-v1";
+const CACHE_NAME = "akaire-dojo-v2";
 
 self.addEventListener("install", () => {
   self.skipWaiting();

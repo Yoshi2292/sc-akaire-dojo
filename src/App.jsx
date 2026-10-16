@@ -10,6 +10,7 @@ import { ShuResult } from "./components/ShuResult";
 
 /* ---- 複数解答欄（設問内に「それぞれXX字以内」など複数の記述を求める場合）---- */
 const CIRCLED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || "dev";
 const partLabel = (q, i) => (q.answerLabels && q.answerLabels[i]) || CIRCLED[i] || `(${i + 1})`;
 // charLimits に2つ以上あれば複数解答モード。1つ/未設定は従来どおり単一欄。
 const answerParts = (q) => (Array.isArray(q?.charLimits) && q.charLimits.length >= 2 ? q.charLimits : null);
@@ -313,6 +314,7 @@ export default function App() {
             <span style={{ color: "#E36B67" }}>朱入れ</span>道場
           </span>
           <span style={{ fontSize: 11.5, marginLeft: 10, opacity: 0.65, letterSpacing: 1 }}>SC 記述トレーニング</span>
+          <span style={{ fontSize: 10, marginLeft: 8, opacity: 0.55 }}>v{APP_VERSION.slice(0, 7)}</span>
         </div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
           {stats && screen === "home" && (
